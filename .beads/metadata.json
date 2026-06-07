@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "cordite",
+  "project_id": "12aae722-48cf-4dcf-b492-9eedd8fb05d6"
+}
