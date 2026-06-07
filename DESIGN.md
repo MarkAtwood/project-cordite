@@ -28,6 +28,7 @@ requires continuous simulation, it's the engine's job.
 | Map metadata | Spawn points, buy zones, objectives | Named positions |
 | Player classes | Health, armor, speed per class | Numbers in a table |
 | Damage model | Hitbox multipliers, armor reduction | Arithmetic rules |
+| Vehicle rules | Damage, fuel, pit stops, race structure, flight envelope limits | Numbers and state machines |
 
 ### Engine's scope (not Cordite)
 
@@ -41,6 +42,7 @@ requires continuous simulation, it's the engine's job.
 | Audio | Spatial audio, occlusion, HRTF |
 | Animation | Skeletal meshes, blend trees, IK |
 | AI | Bot navigation, decision making |
+| Input | HID mapping, axis curves, dead zones |
 
 ## Architecture
 
@@ -397,6 +399,12 @@ companion without running the game engine.
    client. Discrepancies between declared stats and observed behavior
    flag potential cheats.
 
+6. **Physical-world consumers.** Nothing in Cordite assumes a screen.
+   A drone running CTF objective logic, a robot reading weapon stats
+   for a paintball turret, or a vehicle using zone and waypoint metadata
+   are all valid Cordite consumers. The same JSON that configures a
+   video game configures a physical arena.
+
 ## Reference Engine (separate project)
 
 Cordite is a spec. It does not include a game engine. But a spec without
@@ -421,7 +429,7 @@ Reference engine (separate project, separate repo)
 The dependency is one-way: the engine reads Cordite definitions, Cordite
 does not know about the engine. Someone could build a different engine that
 also reads Cordite JSON — an Unreal plugin, a Godot module, a custom
-Rust server — and it would be equally valid.
+Rust server, or an O3DE Gem — and it would be equally valid.
 
 The goal: a game designer provides **art assets** (character models, weapon
 models, map geometry as glTF, sounds, textures) plus a **Cordite JSON**
@@ -430,6 +438,20 @@ playable game. No engine programming required.
 
 The reference engine is a separate project with its own name and repo.
 Cordite does not prescribe its architecture, language, or implementation.
+
+### Candidate Platforms
+
+- **O3DE** (Open 3D Engine) — Amazon Lumberyard rewritten and donated to
+  the Linux Foundation's Open 3D Foundation. Apache 2.0 licensed.
+  Component-based architecture with a "Gem" extension system; a Cordite
+  reader would be a Gem. Already data-driven (prefabs, script canvas) and
+  has a built-in server-authoritative multiplayer framework. Heavy — tens
+  of millions of lines — but feature-complete.
+- **Godot** — MIT licensed, lighter weight, active community. GDScript or
+  C++ modules could consume Cordite JSON.
+- **Custom Rust server** — Minimal, purpose-built. Fastest path to a
+  headless game server that reads Cordite JSON and runs authoritative
+  simulation, but requires building rendering/audio separately.
 
 ## Open Questions
 
@@ -442,6 +464,11 @@ Cordite does not prescribe its architecture, language, or implementation.
 
 3. **Vehicle definitions.** Games with vehicles (Battlefield, Halo) need
    vehicle stats (speed, health, weapon mounts). Same pattern as weapons?
+   Flight sims and racing sims are in scope — if a full HOTAS or
+   wheel/pedal input deck can't drive a Cordite game, the abstraction
+   is wrong. Vehicle physics stay in the engine; vehicle *rules* (damage
+   model, fuel, pit stops, race structure, flight envelope limits) are
+   declarative data.
 
 4. **Damage types.** Some games have damage type interactions (fire vs.
    ice, armor-piercing vs. standard). Is this a simple multiplier table
