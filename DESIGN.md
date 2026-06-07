@@ -397,6 +397,40 @@ companion without running the game engine.
    client. Discrepancies between declared stats and observed behavior
    flag potential cheats.
 
+## Reference Engine (separate project)
+
+Cordite is a spec. It does not include a game engine. But a spec without
+an engine means people still have to build one before they can play.
+
+The intended companion is a **reference engine** — a separate project that
+consumes Cordite JSON definitions and provides the hard real-time layer:
+
+```
+Cordite (spec)
+    ↑ reads (depends on)
+    │
+Reference engine (separate project, separate repo)
+    - Physics simulation (rigid body, projectiles, grenades)
+    - Netcode (client prediction, server reconciliation, lag compensation)
+    - Hit detection (server-authoritative, hitbox vs hitscan vs projectile)
+    - Map loading (glTF geometry, collision meshes, navmeshes)
+    - Audio (spatial, occlusion)
+    - Rendering (or delegates to client engine)
+```
+
+The dependency is one-way: the engine reads Cordite definitions, Cordite
+does not know about the engine. Someone could build a different engine that
+also reads Cordite JSON — an Unreal plugin, a Godot module, a custom
+Rust server — and it would be equally valid.
+
+The goal: a game designer provides **art assets** (character models, weapon
+models, map geometry as glTF, sounds, textures) plus a **Cordite JSON**
+(weapon stats, game mode, economy), and the reference engine runs a
+playable game. No engine programming required.
+
+The reference engine is a separate project with its own name and repo.
+Cordite does not prescribe its architecture, language, or implementation.
+
 ## Open Questions
 
 1. **Recoil patterns.** Are these data (a sequence of (dx, dy) offsets per
