@@ -33,7 +33,7 @@ Cordite requires `urn:ietf:params:jmap:scene`. The mapping:
 |----------------|-----------|
 | Arena / map | SceneRegion (bounds, environment, simulationUri) |
 | Players | SceneAvatar |
-| Weapons, pickups, objectives | SceneObject (with customProperties) |
+| Weapons, pickups, objectives | SceneObject (with worldState) |
 | Kill feed, round events | SceneInteractionEvent (via WSS) |
 | The game server | SceneRegion.simulationUri |
 

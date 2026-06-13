@@ -325,14 +325,14 @@ constraints.
 ### Discovery
 
 A client discovers a Cordite game by finding a SceneRegion with
-`customProperties.corditeMode`:
+`worldState.corditeMode`:
 
 ```json
 {
   "id": "region-match-001",
   "name": "Competitive Match #4471",
   "simulationUri": "wss://game.example.com/match/4471",
-  "customProperties": {
+  "worldState": {
     "corditeMode": "search_and_destroy",
     "corditeVersion": "1.0",
     "corditeWeapons": "standard:fps-weapons-tactical",
@@ -376,7 +376,7 @@ to the SceneRegion sees:
 
 - SceneAvatar positions (updated at low Hz by the game server)
 - SceneInteractionEvents (kills, objectives, round transitions)
-- SceneRegion.customProperties (score, round, status)
+- SceneRegion.worldState (score, round, status)
 
 This is enough for a lobby browser, stream overlay, or mobile
 companion without running the game engine.
