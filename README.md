@@ -22,20 +22,26 @@ can't be declarative. Cordite only covers the rules layer on top.
 | Game type | Turn-based | Real-time |
 | Core engine | Declarative + WASM | Engine-specific (Unreal, Unity, Godot, custom) |
 | Server role | Sequencer + hidden state | Authoritative simulation |
-| Transport | WebSocket | UDP (via simulationUri) |
+| Transport | WebSocket | Deployment-chosen behind `simulationUri` (typically UDP or QUIC) |
 | Scene binding | Optional | Required |
 
 ## Relationship to JMAP Scene
 
-Cordite requires `urn:ietf:params:jmap:scene`. The mapping:
+Cordite requires `urn:ietf:params:jmap:scene`. Ephemeral events also
+need `urn:ietf:params:jmap:scene:websocket`. The mapping:
 
 | Cordite concept | JMAP Scene |
 |----------------|-----------|
-| Arena / map | SceneRegion (bounds, environment, simulationUri) |
-| Players | SceneAvatar |
-| Weapons, pickups, objectives | SceneObject (with worldState) |
-| Kill feed, round events | SceneInteractionEvent (via WSS) |
-| The game server | SceneRegion.simulationUri |
+| Match on a map | SceneRegion (bounds, environment, simulationUri) |
+| Match state (mode, round, score) | SceneRegion.worldState |
+| Players | SceneAvatar (one record per user per region) |
+| Dropped weapons, pickups, bomb, flags | SceneObject (with worldState) |
+| Kill feed, round events | Open question; see DESIGN.md "JMAP Scene Integration" |
+| The game server | The endpoint at SceneRegion.simulationUri |
+
+Weapon, mode, and economy *definitions* are Cordite JSON, not Scene
+records. A weapon in a player's hands is not a SceneObject either; it is
+player state.
 
 ## What Cordite defines (declarative)
 
@@ -64,8 +70,9 @@ Design phase. No implementation yet.
 
 - `DESIGN.md` — Architecture, scope, what's declarative and what isn't
 - `WEAPONS.md` — Standard weapon archetypes and stat definitions
-- `MODES.md` — Game mode definitions (deathmatch, CTF, S&D, etc.)
-- `EXAMPLES.md` — Example game mode definitions
+- `MODES.md` — Game mode definitions (deathmatch, CTF, S&D, etc.) and
+  the standard economy
+- `EXAMPLES.md` — Example game mode definitions (planned, not yet written)
 
 ## Schema Format
 
