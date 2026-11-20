@@ -90,7 +90,7 @@ A weapon is a collection of numeric stats that the engine interprets:
 
 ```json
 {
-  "id": "rifle_ak47",
+  "id": "standard:fps-rifle-ak47",
   "name": "AK-47",
   "category": "rifle",
   "slot": "primary",
@@ -109,6 +109,7 @@ A weapon is a collection of numeric stats that the engine interprets:
       "head": 4.0,
       "chest": 1.0,
       "stomach": 1.25,
+      "arms": 1.0,
       "legs": 0.75
     }
   },
@@ -143,11 +144,12 @@ A weapon is a collection of numeric stats that the engine interprets:
 
 ## Game Mode Model
 
-A game mode is a state machine:
+A game mode is a state machine. An abridged form of the standard
+Search and Destroy mode (the full definition is in MODES.md):
 
 ```json
 {
-  "id": "search_and_destroy",
+  "id": "standard:mode-search-destroy",
   "name": "Search and Destroy",
   "team_based": true,
   "teams": {
@@ -168,6 +170,7 @@ A game mode is a state machine:
     "freeze_time_sec": 15,
     "overtime": {
       "trigger": "tied_at_12",
+      "format": "mr3",
       "max_rounds": 6,
       "money_reset": 10000
     }
@@ -175,27 +178,36 @@ A game mode is a state machine:
 
   "objectives": {
     "bomb": {
+      "carrier": "random_attacker",
       "plant_time_sec": 3.2,
       "defuse_time_sec": { "no_kit": 10, "with_kit": 5 },
       "explosion_timer_sec": 40,
       "explosion_damage": 500,
       "explosion_radius": 15,
-      "plant_zones": ["site_a", "site_b"]
+      "sites": 2
     }
   },
 
   "win_conditions": [
-    { "type": "elimination", "description": "All opponents eliminated" },
-    { "type": "objective_complete", "role": "attackers", "description": "Bomb detonated" },
-    { "type": "objective_defended", "role": "defenders", "description": "Time expired or bomb defused" }
-  ]
+    { "type": "elimination" },
+    { "type": "bomb_detonated", "winner": "attackers" },
+    { "type": "bomb_defused", "winner": "defenders" },
+    { "type": "time_expired", "winner": "defenders" }
+  ],
+
+  "economy": "standard:economy-competitive"
 }
 ```
+
+The mode does not name map zones. The bomb can be planted in the map's
+zones of type `bomb_site` (see Map Metadata Model).
 
 ## Economy Model
 
 ```json
 {
+  "id": "standard:economy-competitive",
+
   "start_money": 800,
   "max_money": 16000,
 
@@ -203,7 +215,7 @@ A game mode is a state machine:
   "round_loss_streak": [1400, 1900, 2400, 2900, 3400],
   "loss_streak_reset": "on_win",
 
-  "kill_rewards": {
+  "kill_rewards_by_category": {
     "rifle": 300,
     "smg": 600,
     "shotgun": 900,
@@ -212,7 +224,10 @@ A game mode is a state machine:
     "knife": 1500
   },
 
-  "bomb_plant_reward": 300,
+  "objective_rewards": {
+    "bomb_plant": 300,
+    "bomb_defuse": 300
+  },
 
   "equipment": {
     "kevlar": { "price": 650, "armor": 100 },
