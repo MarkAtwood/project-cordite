@@ -53,7 +53,7 @@ requires continuous simulation, it's the engine's job.
 ├──────────────────────────────────────────────────────┤
 │  JMAP Scene (spatial state layer)                     │
 │  - SceneRegion (map), SceneAvatar (players),          │
-│  - SceneObject (weapons/pickups), events (kill feed)  │
+│  - SceneObject (pickups, bomb), discrete events       │
 ├──────────────────────────────────────────────────────┤
 │  Game server (simulationUri, engine-specific)         │
 │  - Physics, hit detection, netcode                    │
@@ -69,7 +69,8 @@ requires continuous simulation, it's the engine's job.
 The Cordite JSON travels to both client and server:
 - **Server** reads it to configure game rules (damage calc, round logic, economy)
 - **Client** reads it to render HUD, buy menus, weapon stats, game mode UI
-- **JMAP Scene** provides the spatial state layer and real-time events
+- **JMAP Scene** provides the spatial state layer and discrete,
+  low-frequency events; gameplay traffic stays on the simulation layer
 
 ## Units and Coordinates
 
@@ -352,21 +353,43 @@ constraints.
 
 ## JMAP Scene Integration
 
+Section and line references below are to `draft-atwood-jmap-scene-00`
+("Scene"), `draft-atwood-jmap-scene-wss-00` ("Scene WSS"), and the JMAP
+Scene implementer guides, as of jmap-chat-spec commit `3445973`.
+
 ### Discovery
 
-A client discovers a Cordite game by finding a SceneRegion with
-`worldState.corditeMode`:
+A Cordite match is a SceneRegion whose `worldState` carries
+`corditeMode`. `SceneRegion/query` cannot filter on `worldState` (its
+filters are `name`, `accessPolicy`, `viewHint`, `hasSimulationUri`,
+`hasActiveAvatars`, `createdAfter`, `createdBefore`), so a client queries
+with `hasSimulationUri: true`, fetches the regions with `SceneRegion/get`,
+and checks `worldState.corditeMode` itself. A client sees only regions it
+has access to under their `accessPolicy`; a lobby browser therefore lists
+`"public"` matches and the `"invite"` matches its user is on.
+
+A region as `SceneRegion/get` returns it (server-set `accountId`,
+`ownerId`, `activeAvatarCount`, `createdAt`, and `updatedAt` omitted):
 
 ```json
 {
-  "id": "region-match-001",
+  "id": "01JDKQ7Z3V0000000000004471",
   "name": "Competitive Match #4471",
-  "simulationUri": "wss://game.example.com/match/4471",
+  "description": null,
+  "bounds": { "min": [-63.5, 0, -81.3], "max": [53.3, 10.2, 30.5] },
+  "environment": { "gravity": 9.81 },
+  "simulationUri": "udp://game.example.com:27015/match/4471",
+  "inputUri": null,
+  "viewHint": "3d",
+  "spawnPosition": [0, 0, 0],
+  "spawnOrientation": [0, 0, 0, 1],
+  "accessPolicy": "invite",
+  "invitedUserIds": [],
   "worldState": {
-    "corditeMode": "search_and_destroy",
+    "corditeMode": "standard:mode-search-destroy",
     "corditeVersion": "1.0",
     "corditeWeapons": "standard:fps-weapons-tactical",
-    "corditeEconomy": "standard:fps-economy-competitive",
+    "corditeEconomy": "standard:economy-competitive",
     "status": "warmup",
     "map": "de_dust2",
     "round": 1,
@@ -375,41 +398,130 @@ A client discovers a Cordite game by finding a SceneRegion with
 }
 ```
 
+- `id` is a ULID the server assigns on `SceneRegion/set` create; `name`
+  and `bounds` are the only required create properties (Scene L1132-L1144).
+  `bounds` comes from the map metadata.
+- `invitedUserIds` holds the match roster. The server returns it only to
+  callers who may update the region and returns `[]` to everyone else
+  (Scene L529), which is what a player sees above.
+- `simulationUri` is opaque to the JMAP server and untrusted; clients
+  SHOULD NOT connect to it without explicit user action (Scene L415,
+  L2717). The simulation guide recommends a short-lived token minted by
+  the JMAP side and sent in the first message, followed by a server
+  capabilities message (simulation guide L249-L256, L275); that message
+  is a natural place to confirm `corditeVersion`.
+- `worldState` is visible to every user who can access the region
+  (Scene L538). Keep hidden information (an opponent's money or loadout)
+  out of it.
+
+### Who May Write What
+
+Scene's permission rules decide where the game server can keep match
+state:
+
+| Record | Who may update it | Consequence for Cordite |
+|--------|-------------------|-------------------------|
+| SceneRegion, including `worldState` | Region owner or an administrator (Scene L1240) | The game server creates the match region, or has administrative rights, to keep score there |
+| SceneObject | Its owner, the region owner, or an administrator (Scene L2699) | The game server can own pickups, the bomb, and flags |
+| SceneAvatar | Only the user it belongs to; an owner or administrator may only set `leftAt` to eject (Scene L2709-L2711) | The game server cannot write a player's team, health, or money into that player's avatar `worldState` through JMAP |
+
+Server-side reconciliation (avatar positions copied from the simulation
+layer) is done by the deployment against its own store, not as a JMAP
+caller (Scene L2653-L2660; simulation guide Architecture B, L1262).
+
+Players map onto the SceneAvatar lifecycle:
+
+- **Join:** `SceneAvatar/set` create with `regionId`. A user has at most
+  one record per region; a second create fails with `alreadyExists` and
+  `existingId` (Scene L689-L690, L2317).
+- **Leave:** an update that sets `leftAt`. The server stores its own time
+  and echoes it in `updated` (Scene L2385-L2447).
+- **Rejoin after a disconnect:** an update that sets `leftAt` to `null` on
+  the same record (Scene L2448). The server may set `leftAt` itself when
+  the connection drops.
+- **Kick:** the region owner or an administrator sets `leftAt` on the
+  player's record (eject); the update may patch nothing else.
+
 ### Real-Time Events
 
-Game events flow through SceneInteractionEvent (via JMAP Scene WSS):
+Gameplay traffic (input, movement, shots, hits, damage) belongs to the
+simulation layer behind `simulationUri`. The JMAP WebSocket carries only
+discrete low-frequency events, rate-limited to two `SceneObjectEvent`
+updates per object per second and five `SceneInteractionEvent`s per user
+per region per second (Scene WSS L694-L712).
+
+Ephemeral events require the separate capability
+`urn:ietf:params:jmap:scene:websocket` and a `SceneStreamEnable` message
+on the JMAP WebSocket (Scene WSS L135-L152, L432). Scene WSS defines
+three event types and none of them is a server-originated announcement.
+How Cordite carries the kill feed and round transitions is an open
+question (see Open Questions). The candidates are:
+
+- **`SceneInteractionEvent`**, as a user acting on an interactable
+  object. The server sets `userId` to the submitting user and ignores any
+  supplied value, and accepts the event only from a user with an active
+  avatar in the region, about a SceneObject in that region with
+  `interactable: true` (Scene WSS L297-L300, L413-L419; Scene L2137). If
+  the game server relays kills this way, it needs its own avatar in the
+  region and an interactable "match feed" object, `userId` names the game
+  server rather than the killer, and a busy moment can exceed five events
+  a second.
+- **`SceneObjectEvent`**, raised when the game server updates a match-state
+  SceneObject's `worldState`. Subscribers then call `SceneObject/get`;
+  updates coalesce at two per second.
+- **`StateChange`** after a `SceneRegion.worldState` update (score, round,
+  status), followed by `SceneRegion/get`.
+- **Chat system messages** in a Chat bound through `chatId`, as the
+  JMAP Scene games guide suggests for move logs.
+
+A kill relayed as an interaction would look like this (the `action` uses
+reverse-domain notation as Scene WSS L306 recommends; the domain is an
+open question):
 
 ```json
 {
   "@type": "SceneInteractionEvent",
-  "regionId": "region-match-001",
-  "objectId": null,
-  "userId": "user:alice@example.com",
-  "action": "cordite.kill",
+  "accountId": "account-xyz",
+  "regionId": "01JDKQ7Z3V0000000000004471",
+  "objectId": "01JDKQ7Z3V0000000000000F33",
+  "userId": "user:gameserver@game.example.com",
+  "action": "io.github.markatwood.cordite.kill",
   "data": {
+    "killer": "user:alice@example.com",
     "victim": "user:bob@example.com",
-    "weapon": "rifle_ak47",
+    "weapon": "standard:fps-rifle-ak47",
     "headshot": true,
     "assist": "user:carol@example.com"
   }
 }
 ```
 
-These events drive spectator UI, kill feed, stats tracking, and JMAP
-Scene clients that aren't running the full game engine (lobby viewers,
-mobile companion apps, stream overlays).
+`accountId` is required on every Scene WSS event because region and
+object ids are unique only within an account (Scene WSS L181).
 
-### Spectator Mode
+### Spectators and Companion Apps
 
-JMAP Scene provides the spectator layer. A non-engine client connected
-to the SceneRegion sees:
+A non-engine client (lobby browser, stream overlay, mobile companion) can
+use Scene without running the game engine, within these limits:
 
-- SceneAvatar positions (updated at low Hz by the game server)
-- SceneInteractionEvents (kills, objectives, round transitions)
-- SceneRegion.worldState (score, round, status)
-
-This is enough for a lobby browser, stream overlay, or mobile
-companion without running the game engine.
+- **State** (`SceneRegion.worldState`, SceneObjects, SceneAvatars) needs
+  only access to the region: `/get`, `/changes`, and `StateChange` push.
+- **Ephemeral events** go only to users with an active avatar in the
+  region (Scene WSS L689, L1186). A spectator who wants the event stream
+  has to enter the region as a SceneAvatar, which counts toward
+  `activeAvatarCount` and `maxAvatarsPerRegion` and announces the entry
+  with a `SceneAvatarEvent`. Scene has no spectator role; the game server
+  tells players from spectators by its own roster.
+- **Positions** in SceneAvatar records come from reconciliation, which
+  Scene RECOMMENDS every 5 to 30 seconds (Scene L2657). That is a fallback
+  for late joiners, not a live minimap; a live spectator view needs the
+  simulation layer.
+- **Hidden information.** Any user with access to the region can read
+  every SceneAvatar's last position. In a competitive round that is a
+  wallhack. Scene's visibility filtering is defined for SceneObjects
+  (Scene L2662-L2676, L2753), not for avatars, so a Cordite deployment
+  should not reconcile living players' positions into Scene during a live
+  round, or should delay or coarsen them (Scene L2737).
 
 ## What Cordite Enables
 
