@@ -71,6 +71,18 @@ The Cordite JSON travels to both client and server:
 - **Client** reads it to render HUD, buy menus, weapon stats, game mode UI
 - **JMAP Scene** provides the spatial state layer and real-time events
 
+## Units and Coordinates
+
+Cordite uses the JMAP Scene conventions so that map metadata can be
+copied into Scene records without conversion: positions and distances in
+meters, a right-handed Y-up coordinate system, and orientations as unit
+quaternions `[x, y, z, w]` (identity `[0, 0, 0, 1]`). A yaw (turn left or
+right) is a rotation about +Y: `[0, sin(θ/2), 0, cos(θ/2)]`. Times are in
+seconds, speeds in meters per second, and weapon spread in degrees.
+
+Engines with other conventions (Source and Quake units are about an inch,
+Z-up; Unreal is centimeters, Z-up, left-handed) convert when loading.
+
 ## Weapon Definition Model
 
 A weapon is a collection of numeric stats that the engine interprets:
@@ -212,43 +224,43 @@ A game mode is a state machine:
 ## Map Metadata Model
 
 Cordite does NOT define map geometry. It defines named positions and zones
-that the engine maps to its own coordinate system:
+in the map's region-local Scene coordinates (see Units and Coordinates);
+the engine maps them to its own coordinate system:
 
 ```json
 {
   "map_id": "de_dust2",
-  "region_id": "01J5ABC0000000000000000001",
-  "bounds": { "min": [-2500, -1200, 0], "max": [2100, 3200, 400] },
+  "bounds": { "min": [-63.5, 0, -81.3], "max": [53.3, 10.2, 30.5] },
 
   "spawns": {
     "attackers": [
-      { "position": [-1400, -500, 0], "orientation": [0, 0, 0.7, 0.7] },
-      { "position": [-1350, -450, 0], "orientation": [0, 0, 0.7, 0.7] }
+      { "position": [-35.6, 0, 12.7], "orientation": [0, 0.7071, 0, 0.7071] },
+      { "position": [-34.3, 0, 11.4], "orientation": [0, 0.7071, 0, 0.7071] }
     ],
     "defenders": [
-      { "position": [1200, 2800, 0], "orientation": [0, 0, -0.7, 0.7] },
-      { "position": [1250, 2750, 0], "orientation": [0, 0, -0.7, 0.7] }
+      { "position": [30.5, 0, -71.1], "orientation": [0, -0.7071, 0, 0.7071] },
+      { "position": [31.8, 0, -69.9], "orientation": [0, -0.7071, 0, 0.7071] }
     ]
   },
 
   "zones": {
     "site_a": {
       "type": "bomb_site",
-      "bounds": { "min": [700, 2400, 0], "max": [1100, 2900, 200] }
+      "bounds": { "min": [17.8, 0, -73.7], "max": [27.9, 5.1, -61.0] }
     },
     "site_b": {
       "type": "bomb_site",
-      "bounds": { "min": [-1500, 2400, 0], "max": [-900, 2800, 200] }
+      "bounds": { "min": [-38.1, 0, -71.1], "max": [-22.9, 5.1, -61.0] }
     },
     "attacker_buy": {
       "type": "buy_zone",
       "team": "attackers",
-      "bounds": { "min": [-1600, -700, 0], "max": [-1100, -300, 200] }
+      "bounds": { "min": [-40.6, 0, 7.6], "max": [-27.9, 5.1, 17.8] }
     },
     "defender_buy": {
       "type": "buy_zone",
       "team": "defenders",
-      "bounds": { "min": [900, 2600, 0], "max": [1400, 3100, 200] }
+      "bounds": { "min": [22.9, 0, -78.7], "max": [35.6, 5.1, -66.0] }
     }
   },
 
@@ -256,7 +268,25 @@ that the engine maps to its own coordinate system:
 }
 ```
 
+`bounds` has the shape of a Scene `SceneBounds` and becomes the
+SceneRegion's `bounds` when a match region is created; each `min`
+component must not exceed the matching `max` component.
+
+A map definition does not name a SceneRegion. Region ids are assigned by
+the server when a region is created and are unique only within one
+account, and one map serves many matches. The binding runs the other way:
+the region's `worldState` names the map (see Discovery below).
+
+Per-team spawns are Cordite data that the game server applies. A
+SceneRegion has a single `spawnPosition`/`spawnOrientation`, which is
+where Scene places a new SceneAvatar record; the game server moves the
+player to a team spawn in the simulation layer.
+
 ## Player Attributes Model
+
+Speeds are in meters per second; `jump_height` and
+`fall_damage_threshold` (the fall height at which damage starts) are in
+meters.
 
 ```json
 {
@@ -265,12 +295,12 @@ that the engine maps to its own coordinate system:
   "max_armor": 100,
 
   "movement": {
-    "run_speed": 250,
-    "walk_speed": 130,
-    "crouch_speed": 85,
-    "jump_height": 55.5,
+    "run_speed": 6.35,
+    "walk_speed": 3.3,
+    "crouch_speed": 2.16,
+    "jump_height": 1.41,
     "fall_damage": true,
-    "fall_damage_threshold": 300
+    "fall_damage_threshold": 7.6
   },
 
   "hitbox": {

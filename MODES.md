@@ -237,8 +237,8 @@ Games reference these by identifier and override specific values.
   "overrides": {
     "player": {
       "movement": {
-        "run_speed": 350,
-        "jump_height": 75
+        "run_speed": 8.9,
+        "jump_height": 1.9
       }
     }
   },
