@@ -377,12 +377,13 @@ Scene implementer guides, as of jmap-chat-spec commit `3445973`.
 
 ### Discovery
 
-A Cordite match is a SceneRegion whose `worldState` carries
-`corditeMode`. `SceneRegion/query` cannot filter on `worldState` (its
+A Cordite match is a SceneRegion whose `worldState` carries Baize's
+discovery keys, `gameSchema: "urn:game:cordite"` and `gameSchemaVersion`,
+plus `corditeMode` naming the mode (Open Question 9). `SceneRegion/query` cannot filter on `worldState` (its
 filters are `name`, `accessPolicy`, `viewHint`, `hasSimulationUri`,
 `hasActiveAvatars`, `createdAfter`, `createdBefore`), so a client queries
 with `hasSimulationUri: true`, fetches the regions with `SceneRegion/get`,
-and checks `worldState.corditeMode` itself. A client sees only regions it
+and checks `worldState.gameSchema` itself. A client sees only regions it
 has access to under their `accessPolicy`; a lobby browser therefore lists
 `"public"` matches and the `"invite"` matches its user is on.
 
@@ -404,8 +405,9 @@ A region as `SceneRegion/get` returns it (server-set `accountId`,
   "accessPolicy": "invite",
   "invitedUserIds": [],
   "worldState": {
+    "gameSchema": "urn:game:cordite",
+    "gameSchemaVersion": "1.0",
     "corditeMode": "standard:mode-search-destroy",
-    "corditeVersion": "1.0",
     "corditeWeapons": "standard:fps-weapons-tactical",
     "corditeEconomy": "standard:economy-competitive",
     "status": "warmup",
@@ -427,7 +429,7 @@ A region as `SceneRegion/get` returns it (server-set `accountId`,
   L2717). The simulation guide recommends a short-lived token minted by
   the JMAP side and sent in the first message, followed by a server
   capabilities message (simulation guide L249-L256, L275); that message
-  is a natural place to confirm `corditeVersion`.
+  is a natural place to confirm `gameSchemaVersion`.
 - `worldState` is visible to every user who can access the region
   (Scene L538). Keep hidden information (an opponent's money or loadout)
   out of it.
@@ -472,8 +474,10 @@ Ephemeral events require the separate capability
 `urn:ietf:params:jmap:scene:websocket` and a `SceneStreamEnable` message
 on the JMAP WebSocket (Scene WSS L135-L152, L432). Scene WSS defines
 three event types and none of them is a server-originated announcement.
-How Cordite carries the kill feed and round transitions is an open
-question (see Open Questions). The candidates are:
+Cordite carries the kill feed and round transitions on a match-state
+SceneObject (Open Question 7, decided): the game server updates its
+`worldState` and clients receive a `SceneObjectEvent`. The candidates
+that were considered:
 
 - **`SceneInteractionEvent`**, as a user acting on an interactable
   object. The server sets `userId` to the submitting user and ignores any
@@ -492,9 +496,9 @@ question (see Open Questions). The candidates are:
 - **Chat system messages** in a Chat bound through `chatId`, as the
   JMAP Scene games guide suggests for move logs.
 
-A kill relayed as an interaction would look like this (the `action` uses
-reverse-domain notation as Scene WSS L306 recommends; the domain is an
-open question):
+For comparison, a kill relayed as an interaction, the rejected option,
+would look like this (the `action` uses Cordite's reverse-domain prefix,
+Scene WSS L306, Open Question 9):
 
 ```json
 {
@@ -528,8 +532,9 @@ use Scene without running the game engine, within these limits:
   region (Scene WSS L689, L1186). A spectator who wants the event stream
   has to enter the region as a SceneAvatar, which counts toward
   `activeAvatarCount` and `maxAvatarsPerRegion` and announces the entry
-  with a `SceneAvatarEvent`. Scene has no spectator role; the game server
-  tells players from spectators by its own roster.
+  with a `SceneAvatarEvent`. Scene has no spectator role; a spectator
+  sets `role: "spectator"` in its own avatar's `worldState` and the game
+  server keeps it out of play (Open Question 12).
 - **Positions** in SceneAvatar records come from reconciliation, which
   Scene RECOMMENDS every 5 to 30 seconds (Scene L2657). That is a fallback
   for late joiners, not a live minimap; a live spectator view needs the
@@ -537,9 +542,10 @@ use Scene without running the game engine, within these limits:
 - **Hidden information.** Any user with access to the region can read
   every SceneAvatar's last position. In a competitive round that is a
   wallhack. Scene's visibility filtering is defined for SceneObjects
-  (Scene L2662-L2676, L2753), not for avatars, so a Cordite deployment
-  should not reconcile living players' positions into Scene during a live
-  round, or should delay or coarsen them (Scene L2737).
+  (Scene L2662-L2676, L2753), not for avatars, so Cordite does not
+  reconcile living players' positions into Scene during a live round;
+  Scene sees spawn and last-known positions at death and at round end
+  (Open Question 11).
 
 ## What Cordite Enables
 
@@ -643,48 +649,67 @@ Cordite does not prescribe its architecture, language, or implementation.
 
 The questions below came out of a review against JMAP Scene
 (jmap-chat-spec `3445973`); see JMAP Scene Integration for the details.
+They were decided on 2026-11-20 within what Scene allows today. Where a
+Scene change would give a cleaner answer, the spec request is tracked in
+crate-jmap bd JMAP-8loa, and the decision is revisited if it lands.
 
-7. **Kill feed and round events.** Which Scene mechanism carries them: a
-   `SceneInteractionEvent` relayed by the game server (needs a game-server
-   avatar and an interactable feed object, names the server as `userId`,
-   five events a second), `SceneObjectEvent` from a match-state object,
-   `StateChange` on `SceneRegion.worldState`, system messages in a bound
-   Chat, or a Scene extension for server-originated region events?
+7. **Kill feed and round events. Decided:** a match-state SceneObject.
+   The game server owns one SceneObject per match region (its account is
+   the region owner) and writes the feed and round events into that
+   object's `worldState` (a bounded list of recent entries, plus round
+   number, phase, score and timer). Every client with an avatar in the
+   region receives each change as a `SceneObjectEvent`. Not a relayed
+   `SceneInteractionEvent`: that would name the server as `userId`, need a
+   server avatar and an interactable object, and hit the five-a-second
+   interaction limit.
 
-8. **Per-player match state.** Team, alive or dead, money, and loadout
-   cannot be written into another user's SceneAvatar `worldState` through
-   JMAP. Do they go in region `worldState` (visible to all), in
-   per-player SceneObjects the game server owns (hideable by visibility
-   filtering), or does the deployment write avatar records directly in
-   its own store?
+8. **Per-player match state. Decided:** one SceneObject per player, owned
+   by the region owner (the game server), holding team, alive or dead,
+   money and loadout in `worldState`. Only the player may write their own
+   SceneAvatar, so the server cannot keep this on the avatar. Object
+   visibility filtering (Scene L2737) can hide what opponents should not
+   see, such as money; region `worldState` is not used for it, because it
+   is visible to everyone in the region.
 
-9. **Namespace.** Which reverse-domain prefix do Cordite interaction
-   actions use (the examples use `io.github.markatwood.cordite`, from the
-   repository's GitHub Pages domain)? Should discovery keep
-   `worldState.corditeMode`, or use Baize's `worldState.gameSchema` and
-   `gameSchemaVersion` so one client check finds both kinds of game?
+9. **Namespace. Decided:** `io.github.markatwood.cordite` for Cordite's
+   reverse-domain names (interaction actions and any other
+   deployment-specific identifiers), matching Baize's
+   `io.github.markatwood.baize`. Discovery uses Baize's keys, so one
+   client check finds both kinds of game: `worldState.gameSchema` is
+   `urn:game:cordite` and `worldState.gameSchemaVersion` is the Cordite
+   version; `worldState.corditeMode` stays and names the mode.
 
-10. **Resolving definitions.** `worldState` names definitions such as
-    `standard:mode-search-destroy`, but nothing says how a client fetches
-    them: a URL, a SceneAsset blob in the hosting account, or a registry.
-    Baize's Scene binding fetches its schema by URI.
+10. **Resolving definitions. Decided:** a `standard:` or custom definition
+    id resolves to a SceneAsset blob in the hosting account, published by
+    the game server, with an `https` URL as the fallback for definitions
+    hosted elsewhere. Clients already fetch SceneAssets, and Baize's
+    binding also fetches its schema by URI.
 
-11. **Avatar positions during a live round.** Readable positions are a
-    wallhack. Does Cordite require that living players' positions are not
-    reconciled into Scene during a round, allow delayed or coarsened
-    positions, or leave it to the deployment?
+11. **Avatar positions during a live round. Decided:** living players'
+    positions are not reconciled into Scene while a round is in play.
+    They stay in the simulation layer, and Scene sees spawn positions and
+    last-known positions at death and at round end. This removes the
+    wallhack without relying on a Scene visibility rule for avatars,
+    which Scene does not have.
 
-12. **Spectators.** Scene events reach only users with an active avatar,
-    so a spectator must enter the region and use a player slot. Is that
-    acceptable, or does Cordite need an observer subscription in Scene?
+12. **Spectators. Decided:** for now a spectator enters the region and
+    takes an avatar slot, because Scene delivers events only to users with
+    an active avatar. The spectator marks itself in its own avatar's
+    `worldState` (`role: "spectator"`), and the game server keeps it out
+    of play. Revisit if Scene gains an observer subscription
+    (bd JMAP-8loa).
 
-13. **Gameplay actions through Scene.** Should discrete player actions
-    (plant, defuse, buy) also go through `SceneObject/interact` so that
-    companion apps and audits see them, or stay entirely in the
-    simulation layer?
+13. **Gameplay actions through Scene. Decided:** no. Plant, defuse and
+    buy are real-time actions handled by the game server through
+    `simulationUri`. Their results appear in the match-state and player
+    objects (decisions 7 and 8), which is what companion apps and audits
+    read. The interaction rate limit also makes Scene interactions a poor
+    fit for gameplay.
 
-14. **Duplicate sources of truth.** DESIGN.md gives a weapon its own
-    `kill_reward` while the economy has `kill_rewards_by_category`; a
-    grenade has `max_carry` while the player model has
-    `inventory.slots.grenades.max_per_type`. Which wins when they
-    disagree, or should one of each pair go?
+14. **Duplicate sources of truth. Decided:** the more specific value
+    wins. A weapon's own `kill_reward` overrides the economy's
+    `kill_rewards_by_category` default for its category, and a grenade's
+    `max_carry` overrides the player model's
+    `inventory.slots.grenades.max_per_type` for that grenade type. The
+    category and player values are the defaults when a weapon or grenade
+    does not set its own.
