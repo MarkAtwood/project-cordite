@@ -7,6 +7,16 @@ their weapon systems.
 
 ### Required Fields
 
+`id`, `name`, `category`, `slot`, `price`, and `fire.mode` are required
+for every weapon. The rest of this block applies by category:
+
+- **Firearms** (`pistol`, `smg`, `rifle`, `sniper`, `shotgun`, `lmg`):
+  everything shown.
+- **Melee:** `damage` and `fire.rate_rpm`; no `magazine`.
+- **Grenades and equipment:** no `magazine`, `fire.rate_rpm`, or
+  `hitbox_multipliers`. A grenade has `damage` (with `radius`) or
+  `effect`, plus `fuse_time_sec` (see Thrown and Melee Fields).
+
 ```json
 {
   "id": "string",
@@ -77,6 +87,31 @@ their weapon systems.
   }
 }
 ```
+
+### Thrown and Melee Fields
+
+```json
+{
+  "damage": {
+    "radius": "number (meters, grenades: blast radius)",
+    "falloff": "linear | none (grenades: damage falloff over radius)",
+    "backstab_multiplier": "number (melee: multiplier for hits from behind)"
+  },
+  "effect": {
+    "type": "blind | smoke | fire",
+    "radius": "number (meters)",
+    "duration_sec": "number",
+    "falloff": "string (blind: angle_and_distance)",
+    "blocks_los": "boolean (smoke)",
+    "damage_per_sec": "number (fire)"
+  },
+  "fuse_time_sec": "number (seconds from throw to detonation)",
+  "max_carry": "number (how many of this item a player may hold)"
+}
+```
+
+Distances are in meters, matching JMAP Scene (see DESIGN.md, Units and
+Coordinates).
 
 ## Standard Weapon Definitions
 
@@ -328,6 +363,21 @@ their weapon systems.
   "max_carry": 1
 }
 ```
+
+## Archetypes Not Yet Defined
+
+DESIGN.md lists, and MODES.md references, archetypes that have no
+definition here yet. An engine cannot load a mode that uses them until
+they are written:
+
+- `standard:fps-smg-p90` (Gun Game)
+- `standard:fps-shotgun-auto` (Gun Game)
+- `standard:fps-lmg-negev` (Gun Game)
+- `standard:fps-grenade-decoy`
+- `standard:fps-railgun-instagib` (Instagib; not in DESIGN.md's list)
+
+The weapon set `standard:fps-weapons-tactical` named in DESIGN.md's
+discovery example is not defined either.
 
 ## Extending Standard Weapons
 

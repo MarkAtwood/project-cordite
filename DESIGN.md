@@ -361,6 +361,9 @@ standard:fps-grenade-incendiary — area denial (damage)
 standard:fps-grenade-decoy     — false radar signature
 ```
 
+WEAPONS.md defines most of these; its "Archetypes Not Yet Defined"
+section lists the rest.
+
 Games reference these and override stats. A "realistic tactical" mode
 reduces all damage-to-kill. An "arena" mode increases movement speed
 and pickup respawn rates. The archetypes are starting points, not
