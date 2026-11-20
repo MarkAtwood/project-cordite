@@ -628,7 +628,8 @@ Cordite does not prescribe its architecture, language, or implementation.
    wheel/pedal input deck can't drive a Cordite game, the abstraction
    is wrong. Vehicle physics stay in the engine; vehicle *rules* (damage
    model, fuel, pit stops, race structure, flight envelope limits) are
-   declarative data.
+   declarative data. JMAP Scene's `SceneRegion.inputUri` (Scene L418) is
+   the channel it provides for such devices and for force feedback.
 
 4. **Damage types.** Some games have damage type interactions (fire vs.
    ice, armor-piercing vs. standard). Is this a simple multiplier table
@@ -639,3 +640,51 @@ Cordite does not prescribe its architecture, language, or implementation.
 
 6. **Map rotation.** Is the playlist/map rotation part of Cordite or a
    server configuration concern?
+
+The questions below came out of a review against JMAP Scene
+(jmap-chat-spec `3445973`); see JMAP Scene Integration for the details.
+
+7. **Kill feed and round events.** Which Scene mechanism carries them: a
+   `SceneInteractionEvent` relayed by the game server (needs a game-server
+   avatar and an interactable feed object, names the server as `userId`,
+   five events a second), `SceneObjectEvent` from a match-state object,
+   `StateChange` on `SceneRegion.worldState`, system messages in a bound
+   Chat, or a Scene extension for server-originated region events?
+
+8. **Per-player match state.** Team, alive or dead, money, and loadout
+   cannot be written into another user's SceneAvatar `worldState` through
+   JMAP. Do they go in region `worldState` (visible to all), in
+   per-player SceneObjects the game server owns (hideable by visibility
+   filtering), or does the deployment write avatar records directly in
+   its own store?
+
+9. **Namespace.** Which reverse-domain prefix do Cordite interaction
+   actions use (the examples use `io.github.markatwood.cordite`, from the
+   repository's GitHub Pages domain)? Should discovery keep
+   `worldState.corditeMode`, or use Baize's `worldState.gameSchema` and
+   `gameSchemaVersion` so one client check finds both kinds of game?
+
+10. **Resolving definitions.** `worldState` names definitions such as
+    `standard:mode-search-destroy`, but nothing says how a client fetches
+    them: a URL, a SceneAsset blob in the hosting account, or a registry.
+    Baize's Scene binding fetches its schema by URI.
+
+11. **Avatar positions during a live round.** Readable positions are a
+    wallhack. Does Cordite require that living players' positions are not
+    reconciled into Scene during a round, allow delayed or coarsened
+    positions, or leave it to the deployment?
+
+12. **Spectators.** Scene events reach only users with an active avatar,
+    so a spectator must enter the region and use a player slot. Is that
+    acceptable, or does Cordite need an observer subscription in Scene?
+
+13. **Gameplay actions through Scene.** Should discrete player actions
+    (plant, defuse, buy) also go through `SceneObject/interact` so that
+    companion apps and audits see them, or stay entirely in the
+    simulation layer?
+
+14. **Duplicate sources of truth.** DESIGN.md gives a weapon its own
+    `kill_reward` while the economy has `kill_rewards_by_category`; a
+    grenade has `max_carry` while the player model has
+    `inventory.slots.grenades.max_per_type`. Which wins when they
+    disagree, or should one of each pair go?
